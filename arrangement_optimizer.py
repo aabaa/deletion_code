@@ -20,6 +20,7 @@ class ArrangementOptimizer:
         # Each variable has binary expression (0-1 string) index
         indices = [utils.bin2str(i, self.dim) for i in range(2**self.dim)]
         self.variables = pulp.LpVariable.dicts(name='P', indices=indices, cat=pulp.LpBinary)
+        # self.variables = pulp.LpVariable.dicts(name='P', indices=indices, cat=pulp.LpContinuous, lowBound=0, upBound=1)
 
         # Warm start solution
         self.set_initial_values()
@@ -190,9 +191,9 @@ class ArrangementOptimizer:
         return codes
 
     def solve(self):
-        solver = pulp.getSolver('GUROBI', threads=16, msg=True, warmStart=True, logPath=f'gurobi_dim={self.dim}.log')
+        solver = pulp.getSolver('PULP_CBC_CMD', threads=16, msg=True, warmStart=True, logPath=f'cbc_dim={self.dim}.log')
+        # solver = pulp.getSolver('GUROBI', threads=16, msg=True, warmStart=True, logPath=f'gurobi_dim={self.dim}.log')
         # solver = pulp.getSolver('GUROBI', threads=16, msg=True, warmStart=True, logPath=f'gurobi_dim={self.dim}.log', timeLimit=3600)
-        # solver = pulp.getSolver('PULP_CBC_CMD', threads=16, msg=True, warmStart=True, logPath=f'cbc_dim={self.dim}.log')
         self.problem.solve(solver)
         if self.problem.status == pulp.constants.LpStatusOptimal:
             num = 0
