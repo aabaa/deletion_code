@@ -2,6 +2,7 @@ import utils
 import pulp
 import time
 import datetime
+from collections import defaultdict
 
 class ArrangementOptimizer:
     VT_BOUNDS    = [0,2,2,2,4,6,10,16,30,52,94,172,316]
@@ -189,9 +190,15 @@ class ArrangementOptimizer:
             if sum % (dim+1) == 0:
                 codes.append(x)
         return codes
+    
+    def calc_variable_count(self):
+        var2count = defaultdict(int)
+        for var, _ in self.problem.constraints:
+            var2count[var.name] += 1
+        return var2count
 
     def solve(self):
-        solver = pulp.getSolver('PULP_CBC_CMD', threads=16, msg=True, warmStart=True, logPath=f'cbc_dim={self.dim}.log')
+        solver = pulp.getSolver('PULP_CBC_CMD', threads=16, msg=True, warmStart=True)
         # solver = pulp.getSolver('GUROBI', threads=16, msg=True, warmStart=True, logPath=f'gurobi_dim={self.dim}.log')
         # solver = pulp.getSolver('GUROBI', threads=16, msg=True, warmStart=True, logPath=f'gurobi_dim={self.dim}.log', timeLimit=3600)
         self.problem.solve(solver)
