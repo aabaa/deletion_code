@@ -6,22 +6,32 @@ from collections import defaultdict
 
 class ArrangementOptimizer:
     VT_BOUNDS    = [0,2,2,2,4,6,10,16,30,52,94,172,316]
-    LOWER_BOUNDS = [0,0,0,0,2,2, 4, 6,14,22,42,78,144]
+    LOWER_BOUNDS = [0,0,0,0,2,2, 4, 6,14,22,42, 78,144]
 
-    def __init__(self, dim:int):
-        assert dim > 0
-        self.dim = dim
+    def __init__(self):
         self.problem = None
         self.variables = None
+        self.dim = 0
+        self.binary_indices = None
     
-    def prepare_model(self):
+    def prepare_model(self, dim:int, binary_indices=None):
+        assert dim > 0
+        self.dim = dim
+
+        self.binary_indices = binary_indices
         self.problem = pulp.LpProblem(name='maximize_deletion_code_arrangement',
                                       sense=pulp.LpMaximize)
 
         # Each variable has binary expression (0-1 string) index
         indices = [utils.bin2str(i, self.dim) for i in range(2**self.dim)]
-        self.variables = pulp.LpVariable.dicts(name='P', indices=indices, cat=pulp.LpBinary)
-        # self.variables = pulp.LpVariable.dicts(name='P', indices=indices, cat=pulp.LpContinuous, lowBound=0, upBound=1)
+        if self.binary_indices is None:
+            self.variables = pulp.LpVariable.dicts(name='P', indices=indices, cat=pulp.LpBinary)
+        else:
+            binary_variables = pulp.LpVariable.dicts(name='P', indices=list(self.binary_indices), cat=pulp.LpBinary)
+            continuous_indices = set(indices) - set(self.binary_indices)
+            continuous_variables = pulp.LpVariable.dicts(name='P', indices=continuous_indices, cat=pulp.LpContinuous, lowBound=0, upBound=1)
+            self.variables = binary_variables
+            self.variables.update(continuous_variables)
 
         # Warm start solution
         self.set_initial_values()
@@ -193,43 +203,54 @@ class ArrangementOptimizer:
     
     def calc_variable_count(self):
         var2count = defaultdict(int)
-        for var, _ in self.problem.constraints:
-            var2count[var.name] += 1
+        for c in self.problem.constraints.values():
+            for var in list(c.keys()):
+                var2count[var.name[2:]] += 1
         return var2count
+    
+    def calc_sum(self):
+        sum_val = 0.0
+        for key in self.variables:
+            sum_val += self.variables[key].value()
+        return sum_val
 
     def solve(self):
-        solver = pulp.getSolver('PULP_CBC_CMD', threads=16, msg=True, warmStart=True)
-        # solver = pulp.getSolver('GUROBI', threads=16, msg=True, warmStart=True, logPath=f'gurobi_dim={self.dim}.log')
+        # solver = pulp.getSolver('PULP_CBC_CMD', threads=16, msg=True, warmStart=True)
+        solver = pulp.getSolver('GUROBI', threads=16, msg=True, warmStart=True, logPath=f'gurobi_dim={self.dim}.log')
         # solver = pulp.getSolver('GUROBI', threads=16, msg=True, warmStart=True, logPath=f'gurobi_dim={self.dim}.log', timeLimit=3600)
         self.problem.solve(solver)
-        if self.problem.status == pulp.constants.LpStatusOptimal:
-            num = 0
-            solutions = []
-            for key in self.variables:
-                if self.variables[key].value() >= 0.99:
-                    num += 1
-                    solutions.append(key)
-
-            print(f'Optimal solution: num={num}')
-            for s in solutions:
-                print(s)
 
 if __name__ == '__main__':
     # parameters
-    dim = 9
-
+    dim = 11
+    
     # executable codes
-    start_time = time.time()
+    t0 = time.time()
     print(f"Start: {datetime.datetime.now()}")
-    solver = ArrangementOptimizer(dim=dim)
-    solver.prepare_model()
-    erapsed_time = time.time() - start_time
-    print(f"preparation time: {erapsed_time}s")
+    solver = ArrangementOptimizer()
+    solver.prepare_model(dim=dim)
+    t1 = time.time()
+    print(f"preparation time: {t1-t0}s")
 
     # solver.save_model(f'model_dim={dim}.json')
     solver.solve()
+    t2 = time.time()
+    print(f"solve time: {t2-t1}s")
+    if solver.problem.status == pulp.constants.LpStatusOptimal:
+        num = 0
+        solutions = []
+        for key in solver.variables:
+            if solver.variables[key].value() >= 0.99:
+                num += 1
+                solutions.append(key)
 
+        print(f'Optimal solution: num={num}')
+        for s in solutions:
+            print(s)
+    
     '''
-    solver = ArrangementOptimizer(dim=9)
-    solver.calc_deletion_code_inclusion()
+    solver = ArrangementOptimizer()
+    for i in range(15):
+        vt_codes = solver.generate_vt_codes(i)
+        print(len(vt_codes))
     '''
