@@ -90,7 +90,8 @@ class ArrangementOptimizer:
         VT code gives the lower bound of the solutions.
         '''
         self.problem += (
-            pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim],
+            # pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim],
+            pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim] + 1,
             'lower_bound_given_by_VT_code'
         )
     
