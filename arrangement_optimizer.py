@@ -3,7 +3,6 @@ import pulp
 import time
 import datetime
 from collections import defaultdict
-import pprint
 
 class ArrangementOptimizer:
     VT_BOUNDS    = [0,2,2,2,4,6,10,16,30,52,94,172,316]
@@ -268,7 +267,7 @@ class ArrangementOptimizer:
 
 if __name__ == '__main__':
     # parameters
-    dim = 10
+    dim = 11
     
     # executable codes
     t0 = time.time()
