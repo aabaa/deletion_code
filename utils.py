@@ -27,6 +27,19 @@ def delete_ith_component(x, dim, i):
 def delete_all_components(x, dim):
     return {delete_ith_component(x, dim, i) for i in range(dim)}
 
+def count_number_of_runs(s):
+    count = 1
+    for i in range(len(s)-1):
+        if s[i] != s[i+1]:
+            count += 1
+    a, b = count//2, count//2
+    if count % 2 == 1:
+        if s[0] == '0':
+            a += 1
+        else:
+            b += 1
+    return a, b
+
 if __name__ == '__main__':
     x = 0b1011
     assert bin2str(x, 4) == '1011'
@@ -60,3 +73,7 @@ if __name__ == '__main__':
     assert delete_ith_component(x, 4, 3) == 0b11
 
     assert delete_all_components(x, 4) == set([0b11, 0b101, 0b111])
+
+    assert count_number_of_runs('1011') == (1,2)
+    assert count_number_of_runs('010110') == (3,2)
+    

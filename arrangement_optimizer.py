@@ -3,6 +3,7 @@ import pulp
 import time
 import datetime
 from collections import defaultdict
+import pprint
 
 class ArrangementOptimizer:
     VT_BOUNDS    = [0,2,2,2,4,6,10,16,30,52,94,172,316]
@@ -41,12 +42,14 @@ class ArrangementOptimizer:
         self.problem += pulp.lpSum(self.variables.values())
 
         # Constraint functions
-        self.add_default_constraints()
-        self.add_vt_code_bound_constraints()
-        self.add_all_the_same_characters_constraints()
-        self.add_only_one_different_character_constraints()
-        self.add_deletion_code_inclusion_constraints()
-        self.add_inductive_n_cube_constraints()
+        self.add_default_constraints()                      # constraint 1
+        self.add_deletion_code_inclusion_constraints()      # constraint 2
+        self.add_all_the_same_characters_constraints()      # constraint 3-2
+        self.add_only_one_different_character_constraints() # constraint 3-1
+        self.add_bit_flip_symmetry_constraints()            # constraint 4
+        self.add_number_of_runs_constraints()               # constraint 5
+        self.add_vt_code_bound_constraints()                # constraint 6
+        self.add_inductive_n_cube_constraints()             # constraint 7
 
     def set_initial_values(self):
         vt_elements = self.generate_vt_codes(self.dim)
@@ -74,6 +77,7 @@ class ArrangementOptimizer:
             self.variables[one_0].fixValue()
             self.variables[one_1].fixValue()
 
+    # Constraint 1
     def add_default_constraints(self):
         '''
         Each deletion code belongs to at most one insertion code.
@@ -85,35 +89,23 @@ class ArrangementOptimizer:
                 f'default_constraints_D{utils.bin2str(x, self.dim-1)}'
             )
 
-    def add_vt_code_bound_constraints(self):
+    # Constraint 2
+    def add_deletion_code_inclusion_constraints(self):
         '''
-        VT code gives the lower bound of the solutions.
+        If a pair of strings which deletion code set have inclusion relationship,
+        an enclosing side does not have to be arranged.
+        (∃x)(del(x) c= del(y)) ---> P[y] == 0
         '''
-        self.problem += (
-            # pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim],
-            pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim] + 1,
-            'lower_bound_given_by_VT_code'
-        )
+        inclusion_pairs = self.listup_deletion_codes_inclusion_pairs()
+        inclusives = {y for x,y in inclusion_pairs}
+        for y in inclusives:
+            y_str = utils.bin2str(y, self.dim)
+            self.problem += (
+                self.variables[y_str] == 0,
+                f'del({y_str})_deletion_code_inclusion_constraints'
+            )
     
-    def add_all_the_same_characters_constraints(self):
-        '''
-        A string with all the same character (000000 or 111111) should be 1,
-        because it has only one deletion code (00000 or 11111) so that 
-        it is included in any element that has intersection with it.
-        (∀y)(del(x) & del(y) --> del(x) c= del(y)) --> P[x] == 1
-        '''
-        all_0 = '0' * self.dim
-        self.problem += (
-            self.variables[all_0] == 1,
-            f'P{all_0}_all_the_same_characters_constraints'
-            )
-
-        all_1 = '1' * self.dim
-        self.problem += (
-            self.variables[all_1] == 1,
-            f'P{all_1}_all_the_same_characters_constraints'
-            )
-
+    # Constraint 3-1
     def add_only_one_different_character_constraints(self):
         '''
         A string with only one different character (101111 or 001000) should be 0,
@@ -133,22 +125,75 @@ class ArrangementOptimizer:
                 self.variables[one_1] == 0,
                 f'P{one_1}_only_one_different_character_constraints'
                 )
-            
-    def add_deletion_code_inclusion_constraints(self):
-        '''
-        If a pair of strings which deletion code set have inclusion relationship,
-        an enclosing side does not have to be arranged.
-        (∃x)(del(x) c= del(y)) ---> P[y] == 0
-        '''
-        inclusion_pairs = self.listup_deletion_codes_inclusion_pairs()
-        inclusives = {y for x,y in inclusion_pairs}
-        for y in inclusives:
-            y_str = utils.bin2str(y, self.dim)
-            self.problem += (
-                self.variables[y_str] == 0,
-                f'del({y_str})_deletion_code_inclusion_constraints'
-            )
     
+    # Constraint 3-2
+    def add_all_the_same_characters_constraints(self):
+        '''
+        A string with all the same character (000000 or 111111) should be 1,
+        because it has only one deletion code (00000 or 11111) so that 
+        it is included in any element that has intersection with it.
+        (∀y)(del(x) & del(y) --> del(x) c= del(y)) --> P[x] == 1
+        '''
+        all_0 = '0' * self.dim
+        self.problem += (
+            self.variables[all_0] == 1,
+            f'P{all_0}_all_the_same_characters_constraints'
+            )
+
+        all_1 = '1' * self.dim
+        self.problem += (
+            self.variables[all_1] == 1,
+            f'P{all_1}_all_the_same_characters_constraints'
+            )
+        
+    # Constraint 4
+    def add_bit_flip_symmetry_constraints(self):
+        bit_uppers = []
+        bit_lowers = []
+        for x in range(2**self.dim):
+            s = utils.bin2str(x, dim)
+            if s.count('1') < self.dim/2:
+                bit_lowers.append(s)
+            elif s.count('1') > self.dim/2:
+                bit_uppers.append(s)
+        self.problem += (
+            pulp.lpSum([self.variables[s] for s in bit_lowers]) >= pulp.lpSum([self.variables[s] for s in bit_uppers]),
+            f'bit_flip_symmetry_constraints'
+        )
+
+    # Constraint 5
+    def add_number_of_runs_constraints(self):
+        Wn = defaultdict(list)
+        for x in range(2**self.dim):
+            s = utils.bin2str(x, self.dim)
+            a,b = utils.count_number_of_runs(s)
+            w = s.count('1')
+            Wn[(w,a,b)].append(s)
+        
+        indices = []
+        coefficients = []
+        for a in range(1,4):
+            for b in range(1,3):
+                wn2ab = Wn[(2,a,b)]
+                indices.extend(wn2ab)
+                coefficients.extend([b] * len(wn2ab))
+        self.problem += (
+            pulp.lpDot([self.variables[s] for s in indices], coefficients) <= self.dim - 1,
+            f'number_of_runs_constraints'
+        )
+    
+    # Constraint 6
+    def add_vt_code_bound_constraints(self):
+        '''
+        VT code gives the lower bound of the solutions.
+        '''
+        self.problem += (
+            # pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim],
+            pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim] + 1,
+            'lower_bound_given_by_VT_code'
+        )
+    
+    # Constraint 7
     def add_inductive_n_cube_constraints(self):
         # upper bounds of number of arrangement in n-cube (0-origin)
         for n in range(3, self.dim):
@@ -223,7 +268,7 @@ class ArrangementOptimizer:
 
 if __name__ == '__main__':
     # parameters
-    dim = 11
+    dim = 10
     
     # executable codes
     t0 = time.time()
