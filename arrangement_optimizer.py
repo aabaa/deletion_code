@@ -3,6 +3,8 @@ import pulp
 import time
 import datetime
 from collections import defaultdict
+import gurobipy
+import math
 
 class ArrangementOptimizer:
     VT_BOUNDS    = [0,2,2,2,4,6,10,16,30,52,94,172,316]
@@ -41,14 +43,16 @@ class ArrangementOptimizer:
         self.problem += pulp.lpSum(self.variables.values())
 
         # Constraint functions
-        self.add_default_constraints()                      # constraint 1
-        self.add_deletion_code_inclusion_constraints()      # constraint 2
-        self.add_all_the_same_characters_constraints()      # constraint 3-2
-        self.add_only_one_different_character_constraints() # constraint 3-1
-        self.add_bit_flip_symmetry_constraints()            # constraint 4
-        self.add_number_of_runs_constraints()               # constraint 5
-        self.add_vt_code_bound_constraints()                # constraint 6
-        self.add_inductive_n_cube_constraints()             # constraint 7
+        self.add_default_constraints()                      # constraint 0
+        # self.add_vt_code_bound_constraints()                # constraint 1
+        # self.add_deletion_code_inclusion_constraints()      # constraint 2
+        # self.add_only_one_different_character_constraints() # constraint 3-1
+        # self.add_all_the_same_characters_constraints()      # constraint 3-2
+        # self.add_bit_flip_symmetry_constraints()            # constraint 4
+        # self.add_word_reverse_symmetry_constraints()        # constraint 5
+        # self.add_number_of_runs_constraints()               # constraint 6
+        # self.add_number_of_runs_constraints2()              # constraint 6'
+        # self.add_inductive_n_cube_constraints()             # constraint 7
 
     def set_initial_values(self):
         vt_elements = self.generate_vt_codes(self.dim)
@@ -76,7 +80,7 @@ class ArrangementOptimizer:
             self.variables[one_0].fixValue()
             self.variables[one_1].fixValue()
 
-    # Constraint 1
+    # Constraint 0
     def add_default_constraints(self):
         '''
         Each deletion code belongs to at most one insertion code.
@@ -87,6 +91,17 @@ class ArrangementOptimizer:
                 pulp.lpSum([self.variables[utils.bin2str(i,self.dim)] for i in originals]) <= 1,
                 f'default_constraints_D{utils.bin2str(x, self.dim-1)}'
             )
+
+    # Constraint 1
+    def add_vt_code_bound_constraints(self):
+        '''
+        VT code gives the lower bound of the solutions.
+        '''
+        self.problem += (
+            pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim],
+            # pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim] + 1,
+            'lower_bound_given_by_VT_code'
+        )
 
     # Constraint 2
     def add_deletion_code_inclusion_constraints(self):
@@ -150,7 +165,7 @@ class ArrangementOptimizer:
         bit_uppers = []
         bit_lowers = []
         for x in range(2**self.dim):
-            s = utils.bin2str(x, dim)
+            s = utils.bin2str(x, self.dim)
             if s.count('1') < self.dim/2:
                 bit_lowers.append(s)
             elif s.count('1') > self.dim/2:
@@ -161,6 +176,22 @@ class ArrangementOptimizer:
         )
 
     # Constraint 5
+    def add_word_reverse_symmetry_constraints(self):
+        group1 = []
+        group2 = []
+        for x in range(2**self.dim):
+            s = utils.bin2str(x, self.dim)
+            t = s[::-1]
+            if s < t:
+                group1.append(s)
+            elif t < s:
+                group2.append(s)
+        self.problem += (
+            pulp.lpSum([self.variables[s] for s in group1]) >= pulp.lpSum([self.variables[s] for s in group2]),
+            f'word_reverse_symmetry_constraints'
+        )
+
+    # Constraint 6
     def add_number_of_runs_constraints(self):
         Wn = defaultdict(list)
         for x in range(2**self.dim):
@@ -180,18 +211,34 @@ class ArrangementOptimizer:
             pulp.lpDot([self.variables[s] for s in indices], coefficients) <= self.dim - 1,
             f'number_of_runs_constraints'
         )
-    
-    # Constraint 6
-    def add_vt_code_bound_constraints(self):
-        '''
-        VT code gives the lower bound of the solutions.
-        '''
-        self.problem += (
-            # pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim],
-            pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim] + 1,
-            'lower_bound_given_by_VT_code'
-        )
-    
+
+    # Constraint 6'
+    def add_number_of_runs_constraints2(self):
+        Wn = defaultdict(list)
+        for x in range(2**self.dim):
+            s = utils.bin2str(x, self.dim)
+            a,b = utils.count_number_of_runs(s)
+            w = s.count('1')
+            Wn[(w,a,b)].append(s)
+        
+        for w in range(1, self.dim):
+            indices = []
+            coefficients = []
+            for a in range(0, self.dim+1):
+                for b in range(0, self.dim+1):
+                    wn2ab = Wn[(w,a,b)]
+                    indices.extend(wn2ab)
+                    coefficients.extend([a] * len(wn2ab))
+            for a in range(0, self.dim+1):
+                for b in range(0, self.dim+1):
+                    wn2ab = Wn[(w+1,a,b)]
+                    indices.extend(wn2ab)
+                    coefficients.extend([b] * len(wn2ab))
+            self.problem += (
+                pulp.lpDot([self.variables[s] for s in indices], coefficients) <= math.comb(self.dim-1, w),
+                f'number_of_runs_constraints_w={w}'
+            )
+
     # Constraint 7
     def add_inductive_n_cube_constraints(self):
         # upper bounds of number of arrangement in n-cube (0-origin)
@@ -217,6 +264,7 @@ class ArrangementOptimizer:
                             f'{n}-dim_{ys}_{i}th_inductive_n_cube_lower_bound_constraints'
                         )
 
+
     def load_model(self, path:str):
         self.variables, self.problem = pulp.LpProblem.from_json(path)
 
@@ -241,7 +289,7 @@ class ArrangementOptimizer:
         for x in range(lattice_num):
             sum = 0
             for i in range(dim):
-                sum += utils.ith_component(x, i) * i
+                sum += utils.ith_component(x, i) * (i+1)
             if sum % (dim+1) == 0:
                 codes.append(x)
         return codes
@@ -267,7 +315,7 @@ class ArrangementOptimizer:
 
 if __name__ == '__main__':
     # parameters
-    dim = 11
+    dim = 9
     
     # executable codes
     t0 = time.time()
@@ -278,6 +326,7 @@ if __name__ == '__main__':
     print(f"preparation time: {t1-t0}s")
 
     # solver.save_model(f'model_dim={dim}.json')
+
     solver.solve()
     t2 = time.time()
     print(f"solve time: {t2-t1}s")
@@ -292,7 +341,24 @@ if __name__ == '__main__':
         print(f'Optimal solution: num={num}')
         for s in solutions:
             print(s)
-    
+
+    '''
+    # Solve by Gurobi
+    solver.problem.writeLP('problem.lp')
+    gurobi_model = gurobipy.read('problem.lp')
+    gurobi_model.setParam('PoolSearchMode', 1)
+    gurobi_model.setParam('PoolSolutions', 10)
+    gurobi_model.optimize()
+
+    print(f'solution num = {gurobi_model.SolCount}')
+    for i in range(gurobi_model.SolCount):
+        gurobi_model.setParam('SolutionNumber', i)
+        print(f'{i}-th solution was found')
+        # x_val = gurobi_model.getVarByName("x").Xn
+        # y_val = gurobi_model.getVarByName("y").Xn
+        # print(f"Solution {i+1}: x = {x_val}, y = {y_val}")
+    '''
+
     '''
     solver = ArrangementOptimizer()
     for i in range(15):
