@@ -49,7 +49,7 @@ class ArrangementOptimizer:
         # self.add_only_one_different_character_constraints() # constraint 3-1
         # self.add_all_the_same_characters_constraints()      # constraint 3-2
         # self.add_bit_flip_symmetry_constraints()            # constraint 4
-        # self.add_word_reverse_symmetry_constraints()        # constraint 5
+        # self.add_bit_reversal_symmetry_constraints()        # constraint 5
         # self.add_number_of_runs_constraints()               # constraint 6
         # self.add_number_of_runs_constraints2()              # constraint 6'
         # self.add_inductive_n_cube_constraints()             # constraint 7
@@ -176,7 +176,7 @@ class ArrangementOptimizer:
         )
 
     # Constraint 5
-    def add_word_reverse_symmetry_constraints(self):
+    def add_bit_reversal_symmetry_constraints(self):
         group1 = []
         group2 = []
         for x in range(2**self.dim):
@@ -188,7 +188,7 @@ class ArrangementOptimizer:
                 group2.append(s)
         self.problem += (
             pulp.lpSum([self.variables[s] for s in group1]) >= pulp.lpSum([self.variables[s] for s in group2]),
-            f'word_reverse_symmetry_constraints'
+            f'bit_reversal_symmetry_constraints'
         )
 
     # Constraint 6
