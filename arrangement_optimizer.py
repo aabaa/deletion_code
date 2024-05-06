@@ -36,7 +36,8 @@ class ArrangementOptimizer:
             self.variables.update(continuous_variables)
 
         # Warm start solution
-        self.set_initial_values()
+        # self.set_initial_values() # VT(0)
+        self.set_initial_values(offset=0)
         self.fix_at_most_one_different_character()
 
         # Objective function
@@ -44,18 +45,19 @@ class ArrangementOptimizer:
 
         # Constraint functions
         self.add_default_constraints()                      # constraint 0
-        # self.add_vt_code_bound_constraints()                # constraint 1
+        # self.add_vt_code_bound_constraints(exist=True)      # constraint 1
+        self.add_vt_code_bound_constraints(exist=False)     # constraint 1'
         # self.add_deletion_code_inclusion_constraints()      # constraint 2
         # self.add_only_one_different_character_constraints() # constraint 3-1
         # self.add_all_the_same_characters_constraints()      # constraint 3-2
         # self.add_bit_flip_symmetry_constraints()            # constraint 4
         # self.add_bit_reversal_symmetry_constraints()        # constraint 5
-        # self.add_number_of_runs_constraints()               # constraint 6
+        self.add_number_of_runs_constraints()               # constraint 6
         # self.add_number_of_runs_constraints2()              # constraint 6'
         # self.add_inductive_n_cube_constraints()             # constraint 7
 
-    def set_initial_values(self):
-        vt_elements = self.generate_vt_codes(self.dim)
+    def set_initial_values(self, offset=1):
+        vt_elements = self.generate_vt_codes(self.dim, offset=offset)
         vt_elements = set(vt_elements)
         for x in range(2**self.dim):
             xs = utils.bin2str(x, self.dim)
@@ -93,13 +95,13 @@ class ArrangementOptimizer:
             )
 
     # Constraint 1
-    def add_vt_code_bound_constraints(self):
+    def add_vt_code_bound_constraints(self, exist=False):
         '''
         VT code gives the lower bound of the solutions.
         '''
+        offset = 0 if exist else 1
         self.problem += (
-            pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim],
-            # pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim] + 1,
+            pulp.lpSum(self.variables.values()) >= self.VT_BOUNDS[self.dim] + offset,
             'lower_bound_given_by_VT_code'
         )
 
@@ -283,13 +285,13 @@ class ArrangementOptimizer:
                     inclusion_pairs.append((x, y))
         return inclusion_pairs
     
-    def generate_vt_codes(self, dim):
+    def generate_vt_codes(self, dim, offset=1):
         lattice_num = 2**dim
         codes = []
         for x in range(lattice_num):
             sum = 0
             for i in range(dim):
-                sum += utils.ith_component(x, i) * (i+1)
+                sum += utils.ith_component(x, i) * (i+offset)
             if sum % (dim+1) == 0:
                 codes.append(x)
         return codes
@@ -315,7 +317,7 @@ class ArrangementOptimizer:
 
 if __name__ == '__main__':
     # parameters
-    dim = 9
+    dim = 11
     
     # executable codes
     t0 = time.time()
